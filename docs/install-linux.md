@@ -23,11 +23,39 @@ sudo apt install ./tenvor-node_0.1.24-alpha.1_amd64.deb
 
 Then open "Tenvor Node" from your applications menu.
 
-On first start the app walks you through setup. **Settings > Runtime & GPU Setup** checks and repairs the container runtime and GPU access. When the app says the node needs enrollment, enter your invitation code.
+On first start the app walks you through setup. **Settings > Runtime & GPU Setup** checks and repairs the container runtime and GPU access.
+
+On the Dashboard, type your invitation code into the **Invitation code** box and click **Enroll this node**. After the code is accepted the node fetches its GPU runtime and connects by itself. This can take up to 15 minutes on top of the model download.
 
 ## Worker as a service
 
-Run these as your own user, not as root.
+This path was tested on Ubuntu 24.04. Ubuntu 22.04's Podman is too old for it. Run everything as your own user, not as root.
+
+### What the host needs first
+
+The desktop app sets these up for you. A headless node needs them in place before the worker starts:
+
+- the NVIDIA driver, so that `nvidia-smi` shows your card
+- rootless Podman:
+
+  ```sh
+  sudo apt install podman uidmap slirp4netns passt fuse-overlayfs crun dbus-user-session jq curl
+  ```
+
+- the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), with its device list written where the worker reads it:
+
+  ```sh
+  sudo install -D -m 0644 /usr/share/vulkan/icd.d/nvidia_icd.json /etc/vulkan/icd.d/nvidia_icd.json
+  sudo systemctl disable --now nvidia-cdi-refresh.path nvidia-cdi-refresh.service
+  sudo nvidia-ctk cdi generate --feature-flag=no-additional-gids-for-device-nodes --output=/etc/cdi/nvidia.yaml \
+    || sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+  sudo rm -f /var/run/cdi/nvidia.yaml
+  podman run --rm --device nvidia.com/gpu=all docker.io/library/ubuntu:24.04 nvidia-smi -L
+  ```
+
+  The last command must print your card.
+
+### Install and start the worker
 
 Install the worker under a fixed name:
 
@@ -72,6 +100,28 @@ systemctl --user daemon-reload
 systemctl --user enable --now tenvor-worker
 loginctl enable-linger "$USER"
 ```
+
+### Prepare the runtime and enroll
+
+A headless worker waits to be told. The desktop app does these two steps from its screens; here you call the worker's local interface yourself:
+
+```sh
+api() { curl -s -H "Authorization: Bearer $(jq -r .capability ~/.decompute/ipc.json)" -H 'Content-Type: application/json' "$@"; }
+port=$(jq -r .port ~/.decompute/ipc.json)
+api -X POST -d '{}' "http://127.0.0.1:$port/api/runtime/prepare"
+read -r -p "Invitation code: " code
+api -X POST -d "{\"invite_code\":\"$code\"}" "http://127.0.0.1:$port/api/node/enroll"
+systemctl --user restart tenvor-worker
+```
+
+The enroll call answers `{"enrolled":true}`. After the restart the node downloads the model, fetches its serving image and connects. To see where it is:
+
+```sh
+port=$(jq -r .port ~/.decompute/ipc.json)
+api "http://127.0.0.1:$port/api/status" | jq .orchestrator_lifecycle
+```
+
+`"state": "ready"` means the node is connected. The key in `ipc.json` changes at every start, so the `api` helper reads it each time.
 
 Stopping can take up to three minutes while the worker shuts down its serving container. Let it finish.
 

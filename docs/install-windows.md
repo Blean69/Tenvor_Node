@@ -14,8 +14,8 @@
 1. If an earlier build is installed, quit it first (tray icon > Quit).
 2. Download the setup file from the [Releases page](../../../releases) and run it. Windows shows "Windows protected your PC" because the build isn't signed. Click **More info**, then **Run anyway**.
 3. Open Tenvor Node. It sets up its Linux environment and container runtime. If it asks for a restart, restart, then open it again.
-4. When it asks for an invitation code, type the code you were given. Dashes and spaces don't matter, and the code works once.
-5. Leave it running. It downloads the model, measures the card's speed, and then takes work. You can pause or quit from the tray icon.
+4. On the Dashboard, type your invitation code into the **Invitation code** box and click **Enroll this node**. Dashes and spaces don't matter, and the code works once.
+5. Leave it running. It downloads the model, fetches its GPU runtime, measures the card's speed, and then takes work. After the code is accepted this can take up to 15 minutes on top of the download. You can pause or quit from the tray icon.
 
 ## If the Dashboard says WSL is running with older resource limits
 
